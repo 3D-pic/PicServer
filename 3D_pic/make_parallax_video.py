@@ -12,18 +12,17 @@ PROJECT_ROOT = SCRIPT_DIR
 FIXED_OUTPUT_DIR = PROJECT_ROOT / "output"
 
 
-def calculate_video_size_with_margin(image_path, max_amplitude, max_height=1920, max_width=2560,
-                                     target_aspect=None, safety_margin=0.2):
+def calculate_video_size_with_margin(image_path, max_amplitude, max_width=2560,
+                                     safety_margin=0.2, keep_original_height=True):
     """
     计算考虑图层运动后的安全视频尺寸
 
     Args:
         image_path: 输入图像路径
         max_amplitude: 最大运动振幅
-        max_height: 最大高度限制
         max_width: 最大宽度限制
-        target_aspect: 目标宽高比（可选）
         safety_margin: 安全边距比例，默认0.2表示左右各留20%边距
+        keep_original_height: 是否保持原始图像高度
 
     Returns:
         (width, height) 视频尺寸
@@ -36,51 +35,54 @@ def calculate_video_size_with_margin(image_path, max_amplitude, max_height=1920,
             return 1440, 1920  # 默认竖屏尺寸
 
         img_h, img_w = img.shape[:2]
-        img_ratio = img_w / img_h
 
-        print(f"原始图像尺寸: {img_w}x{img_h}, 宽高比: {img_ratio:.2f}")
+        print(f"原始图像尺寸: {img_w}x{img_h}")
         print(f"最大运动振幅: {max_amplitude}像素")
 
-        # 计算需要保留的图像宽度（考虑运动范围）
-        # 运动范围：左右各 max_amplitude 像素
-        needed_image_width = img_w + 2 * max_amplitude
+        if keep_original_height:
+            # === 保持原始图像高度，100%不裁剪 ===
+            # 高度直接使用原始图像高度
+            h = img_h
 
-        # 应用安全边距：视频宽度 = 需要的图像宽度 × (1 - 2×safety_margin)
-        video_width = int(needed_image_width * (1 - 2 * safety_margin))
-        video_height = int(video_width / img_ratio) if img_ratio > 0 else img_h
+            # 计算需要保留的图像宽度（考虑运动范围）
+            # 运动范围：左右各 max_amplitude 像素
+            needed_image_width = img_w + 2 * max_amplitude
 
-        print(f"考虑运动后的图像宽度: {needed_image_width}")
-        print(f"安全边距: {safety_margin * 100:.0f}%")
-        print(f"初步视频尺寸: {video_width}x{video_height}")
+            print(f"考虑运动后的图像宽度: {needed_image_width}")
+            print(f"安全边距: {safety_margin * 100:.0f}%")
 
-        # 如果有指定目标宽高比，则调整
-        if target_aspect:
-            if ":" in target_aspect:
-                w_ratio, h_ratio = map(float, target_aspect.split(":"))
-                target_ratio = w_ratio / h_ratio
-            else:
-                try:
-                    target_ratio = float(target_aspect)
-                except:
-                    target_ratio = video_width / video_height
+            # 应用安全边距：视频宽度 = 需要的图像宽度 × (1 - 2×safety_margin)
+            target_width = int(needed_image_width * (1 - 2 * safety_margin))
 
-            # 按目标比例调整
-            if target_ratio >= 1:  # 横屏
-                h = min(video_height, max_height, int(max_width / target_ratio))
-                w = int(h * target_ratio)
-            else:  # 竖屏
-                w = min(video_width, max_width, int(max_height * target_ratio))
-                h = int(w / target_ratio)
+            # 确保至少能显示原始图像
+            min_video_width = img_w
+
+            # 取两者中的较大值
+            w = max(min_video_width, target_width)
+
+            # 确保不超过最大宽度
+            if w > max_width:
+                w = max_width
+                print(f"⚠️ 宽度超过限制，调整为最大宽度: {max_width}")
+
+            print(f"保持原始高度: {h}像素 (100%原始高度)")
+            print(f"计算出的视频宽度: {w}像素")
+
         else:
+            # 原来的逻辑：按比例裁剪
+            img_ratio = img_w / img_h
+            needed_image_width = img_w + 2 * max_amplitude
+
+            # 应用安全边距
+            video_width = int(needed_image_width * (1 - 2 * safety_margin))
+            video_height = int(video_width / img_ratio) if img_ratio > 0 else img_h
+
             w, h = video_width, video_height
 
-        # 确保不超过最大尺寸
-        if w > max_width:
-            w = max_width
-            h = int(w / (video_width / video_height))
-        if h > max_height:
-            h = max_height
-            w = int(h * (video_width / video_height))
+            # 确保不超过最大尺寸
+            if w > max_width:
+                w = max_width
+                h = int(w / img_ratio)
 
         # 确保尺寸是偶数（视频编码要求）
         if w % 2 != 0:
@@ -92,8 +94,16 @@ def calculate_video_size_with_margin(image_path, max_amplitude, max_height=1920,
         w = max(w, 640)
         h = max(h, 480)
 
-        print(f"最终视频尺寸: {w}x{h}, 宽高比: {w / h:.2f}")
-        print(f"相当于考虑运动后宽度的 {w / needed_image_width * 100:.1f}%")
+        final_ratio = w / h
+        print(f"最终视频尺寸: {w}x{h}, 宽高比: {final_ratio:.2f}")
+        print(f"宽度相当于原始宽度的 {w / img_w * 100:.1f}%")
+        print(f"高度相当于原始高度的 {h / img_h * 100:.1f}%")
+
+        if keep_original_height:
+            if h == img_h:
+                print(f"✅ 成功保持100%原始高度")
+            else:
+                print(f"❌ 高度被改变: {h} vs 原始 {img_h}")
 
         return w, h
 
@@ -104,8 +114,8 @@ def calculate_video_size_with_margin(image_path, max_amplitude, max_height=1920,
 
 def create_parallax_video(image_path: str, depth: int, parallax: int, duration: int,
                           camera_angle: int, output_path: Path,
-                          target_height=1920, target_width=2560, aspect_ratio=None,
-                          safety_margin=0.2, crop_final=True):
+                          max_width=2560, safety_margin=0.2, crop_final=True,
+                          keep_original_height=True):
     """
     创建视差效果视频
 
@@ -116,11 +126,10 @@ def create_parallax_video(image_path: str, depth: int, parallax: int, duration: 
         duration: 视频时长（秒）
         camera_angle: 相机角度
         output_path: 输出视频路径
-        target_height: 目标高度
-        target_width: 目标宽度
-        aspect_ratio: 目标宽高比，如 "9:16" 或 "4:3"
+        max_width: 最大视频宽度
         safety_margin: 安全边距比例
         crop_final: 是否最终裁剪视频
+        keep_original_height: 是否保持原始图像高度
     """
     # 视频参数
     fps = 30
@@ -160,10 +169,9 @@ def create_parallax_video(image_path: str, depth: int, parallax: int, duration: 
     w, h = calculate_video_size_with_margin(
         image_path,
         max_amplitude=max_amplitude,
-        max_height=target_height,
-        max_width=target_width,
-        target_aspect=aspect_ratio,
-        safety_margin=safety_margin
+        max_width=max_width,
+        safety_margin=safety_margin,
+        keep_original_height=keep_original_height
     )
 
     clips = []
@@ -179,6 +187,7 @@ def create_parallax_video(image_path: str, depth: int, parallax: int, duration: 
     print(f"视差强度: {parallax}")
     print(f"相机角度: {camera_angle}度")
     print(f"安全边距: {safety_margin * 100:.0f}%")
+    print(f"保持原始高度: {'是' if keep_original_height else '否'}")
 
     # === 固定背景层 ===
     try:
@@ -222,7 +231,6 @@ def create_parallax_video(image_path: str, depth: int, parallax: int, duration: 
                 continue
 
             layer_h, layer_w = layer_img.shape[:2]
-            layer_ratio = layer_w / layer_h
 
             # 创建图层剪辑
             clip = ImageClip(str(p)).set_duration(duration)
@@ -232,7 +240,7 @@ def create_parallax_video(image_path: str, depth: int, parallax: int, duration: 
 
             # 根据视差强度和深度计算振幅
             base_amplitude = parallax
-            amp = base_amplitude * (n - i) / n
+            amp = base_amplitude * (1.5 ** (n - i)) / n
 
             # 添加相机角度影响（将角度转换为弧度并调整运动）
             angle_rad = np.radians(camera_angle)
@@ -325,13 +333,14 @@ def main():
     parser.add_argument("--width", type=int, default=None, help="视频宽度（可选，不指定则自动计算）")
     parser.add_argument("--height", type=int, default=None, help="视频高度（可选，不指定则自动计算）")
     parser.add_argument("--max-width", type=int, default=2560, help="最大视频宽度")
-    parser.add_argument("--max-height", type=int, default=1920, help="最大视频高度")
-    parser.add_argument("--aspect-ratio", type=str, default=None,
-                        help="目标宽高比，如 '9:16', '4:3', '16:9'（可选）")
     parser.add_argument("--safety-margin", type=float, default=0.2,
                         help="安全边距比例，0.2表示左右各留20%边距，默认0.2")
     parser.add_argument("--no-crop", action="store_true",
                         help="不裁剪最终视频，保留完整运动范围")
+    parser.add_argument("--keep-height", action="store_true", default=True,
+                        help="保持原始图像高度（100%不裁剪，默认启用）")
+    parser.add_argument("--adjust-height", action="store_false", dest="keep_height",
+                        help="调整高度以匹配安全边距")
     parser.add_argument("--fps", type=int, default=30, help="视频帧率")
 
     args = parser.parse_args()
@@ -364,10 +373,11 @@ def main():
         if args.width and args.height:
             w, h = args.width, args.height
             print(f"使用指定的视频尺寸: {w}x{h}")
-            aspect_ratio = None
+            # 如果指定了高度，覆盖keep_height设置
+            keep_original_height = False
         else:
             w, h = None, None
-            aspect_ratio = args.aspect_ratio
+            keep_original_height = args.keep_height
 
         # 创建视差视频
         video_path = create_parallax_video(
@@ -377,11 +387,10 @@ def main():
             duration=args.duration,
             camera_angle=args.camera_angle,
             output_path=output_path,
-            target_height=args.max_height,
-            target_width=args.max_width,
-            aspect_ratio=aspect_ratio,
+            max_width=args.max_width,
             safety_margin=args.safety_margin,
-            crop_final=not args.no_crop
+            crop_final=not args.no_crop,
+            keep_original_height=keep_original_height
         )
 
         print(f"视频文件已保存到: {video_path}")

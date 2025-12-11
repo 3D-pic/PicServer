@@ -1,11 +1,58 @@
 import subprocess
 import sys
 from pathlib import Path
+import shutil
 
 # 获取当前脚本所在目录作为项目根目录
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR
 PY = sys.executable
+
+
+def clean_old_layers(output_dir: Path):
+    """
+    清理旧的图层文件，但保留深度图等重要文件
+
+    Args:
+        output_dir: 输出目录
+    """
+    if not output_dir.exists():
+        return
+
+    print("清理旧的输出文件...")
+
+    # 要保留的文件（深度图和可视化）
+    keep_files = {"depth.npy", "depth_vis.png"}
+    # 要保留的文件扩展名（视频文件）
+    keep_extensions = {".mp4", ".avi", ".mov"}
+
+    # 要删除的图层目录
+    layer_dirs = ["layers", "layers_inpainted", "layers_fixed"]
+
+    for item in output_dir.iterdir():
+        if item.is_file():
+            # 检查是否应该保留
+            if item.name in keep_files:
+                print(f"保留文件: {item.name}")
+            elif item.suffix in keep_extensions:
+                print(f"保留视频文件: {item.name}")
+            else:
+                # 删除其他文件
+                try:
+                    item.unlink()
+                    print(f"删除文件: {item.name}")
+                except Exception as e:
+                    print(f"无法删除文件 {item.name}: {e}")
+        elif item.is_dir():
+            # 如果是图层目录，删除整个目录
+            if item.name in layer_dirs:
+                try:
+                    shutil.rmtree(item)
+                    print(f"删除目录: {item.name}")
+                except Exception as e:
+                    print(f"无法删除目录 {item.name}: {e}")
+            else:
+                print(f"保留其他目录: {item.name}")
 
 
 def run_pipeline(image_path: str, depth: int, parallax: int, duration: int, camera_angle: int):
@@ -30,6 +77,9 @@ def run_pipeline(image_path: str, depth: int, parallax: int, duration: int, came
     # 确保输出目录存在
     output_dir = ROOT / "output"
     output_dir.mkdir(exist_ok=True)
+
+    # 在开始前清理旧的图层文件
+    clean_old_layers(output_dir)
 
     print(f"=== 立体书生成管道开始 ===")
     print(f"项目根目录: {ROOT}")
