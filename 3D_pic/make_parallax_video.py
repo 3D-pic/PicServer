@@ -160,7 +160,7 @@ def create_parallax_video(image_path: str, depth: int, parallax: int, duration: 
     max_amplitude = 0
     for i in range(n):
         base_amplitude = parallax
-        amp = base_amplitude * (n - i) / n
+        amp = base_amplitude * (n - i)
         max_amplitude = max(max_amplitude, abs(amp))
 
     print(f"计算的最大运动振幅: {max_amplitude:.1f}像素")
@@ -240,7 +240,7 @@ def create_parallax_video(image_path: str, depth: int, parallax: int, duration: 
 
             # 根据视差强度和深度计算振幅
             base_amplitude = parallax
-            amp = base_amplitude * (1.5 ** (n - i)) / n
+            amp = base_amplitude * (n - i)
 
             # 添加相机角度影响（将角度转换为弧度并调整运动）
             angle_rad = np.radians(camera_angle)
